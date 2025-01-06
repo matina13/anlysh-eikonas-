@@ -4,8 +4,7 @@ import torchvision.models as models
 import torchvision.transforms as transforms
 from sklearn.metrics.pairwise import cosine_similarity
 from PIL import Image
-import requests
-from io import BytesIO
+import os
 
 def extract_features(images, model_name="resnet50"):
     from torchvision.models import ResNet50_Weights
@@ -25,34 +24,44 @@ def extract_features(images, model_name="resnet50"):
             V.append(vi)
     return np.array(V)
 
+
 def rank_normalization(S):
     n = S.shape[0]
-    tau = np.zeros_like(S)
+    S_normalized = np.zeros_like(S)
     for i in range(n):
-        tau[i] = np.argsort(np.argsort(-S[i]))
-    S_normalized = 2 * n - (tau + tau.T)
+        sorted_indices = np.argsort(-S[i])  # Sort indices by descending similarity
+        S_normalized[i, sorted_indices] = np.arange(n, 0, -1)  # Assign descending ranks
     return S_normalized
+
 
 def construct_hypergraph(V, k=10):
     if V.shape[0] == 0:
         raise ValueError("Feature matrix 'V' is empty. Ensure images are loaded and features are extracted.")
     n = V.shape[0]
     S = cosine_similarity(V)
+    print("Cosine Similarity Matrix:")
+    print(S)
+    S_normalized = rank_normalization(S)
+    print("Rank Normalized Matrix:")
+    print(S_normalized)
     E = {}
     for i in range(n):
-        neighbors = np.argsort(-S[i])[:k]
+        neighbors = np.argsort(-S_normalized[i])[:k]  # Top-k neighbors
         E[i] = neighbors
     return E
 
-def compute_hyperedge_similarities(E, V):
+
+def compute_hyperedge_similarities(E, S):
     n = len(E)
     Sh = np.zeros((n, n))
     for i in range(n):
         for j in range(n):
             if i != j:
                 shared = set(E[i]).intersection(E[j])
-                Sh[i, j] = len(shared)
+                similarity_sum = sum(S[i][k] + S[j][k] for k in shared)  # Sum of shared similarities
+                Sh[i, j] = similarity_sum / len(shared) if shared else 0  # Average shared similarity
     return Sh
+
 
 def compute_cartesian_product(E):
     C = {}
@@ -60,39 +69,45 @@ def compute_cartesian_product(E):
         for vi in vertices:
             for vj in vertices:
                 if vi != vj:
-                    C[(vi, vj)] = C.get((vi, vj), 0) + 1
+                    C[(vi, vj)] = C.get((vi, vj), 0) + 1 / len(vertices)  # Normalize by the size of the hyperedge
     return C
 
-def compute_hypergraph_similarity(E, V):
-    Sh = compute_hyperedge_similarities(E, V)
+
+def compute_hypergraph_similarity(E, V, S):
+    Sh = compute_hyperedge_similarities(E, S)
     C = compute_cartesian_product(E)
     n = len(V)
     W = np.zeros((n, n))
     for (vi, vj), weight in C.items():
         W[vi, vj] += weight
-    W += Sh
+    W += Sh  # Combine with weighted hyperedge similarities
     return W
 
-def load_images_from_urls(urls):
+
+def load_images_from_directory(directory_path):
     images = []
-    for url in urls:
-        response = requests.get(url)
-        if response.status_code == 200:
-            img = Image.open(BytesIO(response.content))
-            images.append(img)
-        else:
-            print(f"Failed to fetch image from URL: {url}")
+    for filename in os.listdir(directory_path):
+        if filename.lower().endswith((".png", ".jpg", ".jpeg")):
+            try:
+                img = Image.open(os.path.join(directory_path, filename))
+                if img.mode != "RGB":
+                    img = img.convert("RGB")
+                images.append(img)
+            except Exception as e:
+                print(f"Error loading image {filename}: {e}")
     return images
 
+
 if __name__ == "__main__":
-    urls = [
-        "https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png",  # Lena
-    ]
-    C = load_images_from_urls(urls)
-    if len(C) == 0:
-        raise ValueError("No images were successfully loaded from URLs.")
+    directory = os.path.dirname(os.path.abspath(__file__))
+    C = load_images_from_directory(directory)
+    if len(C) < 2:
+        raise ValueError("At least two images are required to construct a meaningful hypergraph.")
     V = extract_features(C)
     print("Extracted Features Shape:", V.shape)
-    E = construct_hypergraph(V, k=10)
-    W = compute_hypergraph_similarity(E, V)
+    S = cosine_similarity(V)
+    E = construct_hypergraph(V, k=min(10, len(C)))
+    print("Hypergraph Edges:", E)
+    W = compute_hypergraph_similarity(E, V, S)
+    print("Hypergraph-Based Similarity Matrix:")
     print(W)
