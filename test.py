@@ -6,6 +6,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from PIL import Image
 import requests
 from io import BytesIO
+import os
 
 
 def extract_features(images, model_name="resnet50"):
@@ -110,7 +111,9 @@ if __name__ == "__main__":
         "https://upload.wikimedia.org/wikipedia/commons/3/3a/Rosa_Precious_platinum.jpg"  # Flower
     ]'''
     #C = load_images_from_urls(urls)
-    directory = "C:/Users/matin/Downloads/test"
+    #directory = "C:/Users/matin/Downloads/test"
+    directory = os.path.join(os.getcwd(), "test")
+
     C = load_images_from_directory(directory) # local folder with pictures
     if len(C) < 2:
         raise ValueError("At least two images are required to construct a meaningful hypergraph.")
