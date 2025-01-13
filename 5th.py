@@ -125,31 +125,38 @@ if __name__ == "__main__":
     # Example labels for Precision@K (adjust these based on the dataset)
     labels = ["daisy", "daisy", "rose", "daisy", "rose", "rose", "sunflower", "sunflower", "sunflower", "sunflower", "violet"]
 
-    # Compute Precision@K
-    def precision_at_k(W, labels, target_idx, k=5):
+    # Compute Precision@K and Recall@K
+    def precision_and_recall_at_k(W, labels, target_idx, k=5):
         similar_indices = np.argsort(-W[target_idx])  # Descending order of similarity
         relevant_count = 0
+        total_relevant = sum(1 for label in labels if label == labels[target_idx]) - 1  # Exclude the target itself
 
-        for idx in similar_indices:
+        for idx in similar_indices[:k + 1]:  # Include only the top-K results
             if idx == target_idx:
                 continue  # Skip the target itself
             if labels[idx] == labels[target_idx]:
                 relevant_count += 1
-            if relevant_count == k:  # Stop once top-K are processed
-                break
 
-        return relevant_count / k
+        precision = relevant_count / k
+        recall = relevant_count / total_relevant if total_relevant > 0 else 0
+        return precision, recall
 
-    # Compute Precision@K for all images
-    k = 5
+    # Compute Precision@K and Recall@K for all images
     precision_scores = []
-    for target_idx in range(len(C)):
-        precision = precision_at_k(W, labels, target_idx, k)
-        precision_scores.append(precision)
-        print(f"Target Image {target_idx}: Precision@{k} = {precision:.2f}")
+    recall_scores = []
+    k = 5
 
-    # Calculate and display the average Precision@K
+    for target_idx in range(len(C)):
+        precision, recall = precision_and_recall_at_k(W, labels, target_idx, k)
+        precision_scores.append(precision)
+        recall_scores.append(recall)
+        print(f"Target Image {target_idx}: Precision@{k} = {precision:.2f}, Recall@{k} = {recall:.2f}")
+
+    # Calculate and display the average Precision@K and Recall@K
     average_precision = np.mean(precision_scores)
+    average_recall = np.mean(recall_scores)
+    print(f"Average Precision@{k}: {average_precision:.2f}")
+    print(f"Average Recall@{k}: {average_recall:.2f}")
     print(f"Average Precision@{k}: {average_precision:.2f}")
 
     # Select a target image (e.g., the first image in the dataset)
